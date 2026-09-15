@@ -24,6 +24,13 @@ local function main()
         assert(not messages:match("E%d+:") and not messages:match("Failed to")
             and not messages:match("Error detected"), messages)
         assert(package.loaded["lazy"] and package.loaded["nvim-treesitter.configs"], "核心配置未成功加载")
+        -- Check normal runtime resolution too: old site/parser copies can shadow new parsers.
+        for _, language in ipairs(require("config.parsers")) do
+            vim.treesitter.get_string_parser("", language):parse()
+            for _, query in ipairs({ "highlights", "injections", "locals", "indents", "folds" }) do
+                vim.treesitter.query.get(language, query)
+            end
+        end
         print("完整配置启动验证通过。")
         return
     end

@@ -4,7 +4,10 @@ return {
     lazy = false,
     build = ":TSUpdate",
     config = function()
-      require("nvim-treesitter.configs").setup({
+      -- Match parsers to this plugin's queries, ahead of stale site/parser copies.
+      local configs = require("nvim-treesitter.configs")
+      vim.opt.rtp:prepend(vim.fs.dirname(configs.get_parser_install_dir()))
+      configs.setup({
         ensure_installed = vim.env.NVIM_INSTALLING == "1" and {} or require("config.parsers"),
         sync_install = false,
         auto_install = false, -- do not download parsers for unrelated filetypes

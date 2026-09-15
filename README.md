@@ -51,6 +51,14 @@ bash scripts/install-lsp.sh
 
 自动安装系统包支持 macOS/Homebrew、Debian/Ubuntu（含 WSL）。其他 Linux 需先准备依赖。配置通过软链接部署，已有目标会备份；安装后保留整个源目录。脚本不自动修改 shell 启动文件。
 
+新机器先克隆本仓库，在仓库目录运行 `./install.sh --with-lsp`。将以下内容加入 shell 启动文件（zsh 为 `~/.zshrc`，bash 为 `~/.bashrc`），重新打开终端后用 `command -v nvim` 确认使用 `~/.local/bin/nvim`：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+配置会优先加载锁定的 Treesitter 插件目录中的解析器，避免旧的 `site/parser` 文件覆盖新版本。安装结束时还会验证实际加载的解析器与查询规则是否匹配。
+
 ### 外部依赖
 
 | 用途 | 依赖 |
@@ -110,7 +118,7 @@ source "$HOME/.cargo/env"
 | telescope.nvim | 文件、文本、Buffer、历史文件搜索；宽窄屏自适应 | [telescope.lua](lua/plugins/telescope.lua) |
 | plenary.nvim | Telescope 的工具库依赖 | [telescope.lua](lua/plugins/telescope.lua) |
 | nvim-treesitter | 语法高亮、按语法节点扩大选择；锁定旧 master 分支 API | [treesitter.lua](lua/plugins/treesitter.lua) |
-| rainbow-delimiters.nvim | 配对括号分层着色 | [rainbow.lua](lua/plugins/rainbow.lua) |
+| rainbow-delimiters.nvim | 配对括号分层着色；跳过补全菜单等界面缓冲区及没有解析器的文件 | [rainbow.lua](lua/plugins/rainbow.lua) |
 | nvim-autopairs | 输入括号、引号时自动配对 | [autopairs.lua](lua/plugins/autopairs.lua) |
 | flash.nvim | 屏幕内标签跳转 | [flash.lua](lua/plugins/flash.lua) |
 | persistence.nvim | 保存、选择、恢复编辑会话 | [persistence.lua](lua/plugins/persistence.lua) |
