@@ -1,0 +1,32 @@
+# Local sessions (may contain absolute paths and project state).
+/session/
+/sessions/
+/Session.vim
+/Sessionx.vim
+
+# Neovim swap, backup, undo and command-history files.
+*.swp
+*.swo
+*.swn
+*~
+*.un~
+*.shada
+*.shada.tmp.*
+.netrwhist
+
+# Runtime data, if configured inside this repository.
+/swap/
+/backup/
+/undo/
+/shada/
+/log/
+/logs/
+*.log
+
+# Operating system metadata.
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# Keep init.lua, lua/, scripts/, install.sh, README.md and lazy-lock.json tracked.
