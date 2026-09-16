@@ -19,7 +19,13 @@
 在本目录执行：
 
 ```bash
-# 安装 Neovim、锁定的插件、语法解析器和语言服务器
+# 基础安装：Neovim、编辑插件和语法高亮；不安装/启用 LSP 与补全
+./install.sh
+
+# 只安装并启用 Python、Rust 的 LSP 和 Blink 补全
+./install.sh --lsp python,rust
+
+# 安装全部支持的语言服务器和 Blink 补全
 ./install.sh --with-lsp
 
 # 自选版本并从源码编译
@@ -33,7 +39,7 @@
 ./install.sh --method system --with-lsp --check
 
 # 只补齐语言服务器（已有基础依赖时）
-bash scripts/install-lsp.sh
+bash scripts/install-lsp.sh python,rust
 ```
 
 | 选项 | 含义 |
@@ -44,20 +50,39 @@ bash scripts/install-lsp.sh
 | `--method source` | 从所选版本源码构建 |
 | `--method system` | 使用原 PATH 中的 Neovim；同时指定版本时检查是否一致 |
 | `--jobs N` | 源码构建并发数，默认 2 |
-| `--with-lsp` | 补齐下表中的语言服务器和相应运行依赖 |
+| `--lsp LANGS` | 按逗号分隔选择语言，可重复或使用 `--lsp=LANGS`；默认 `none` |
+| `--with-lsp` | 等同 `--lsp all`，启用全部支持的 LSP 与 Blink 补全 |
 | `--skip-system` | 跳过 apt/Homebrew，仍检查依赖；不等于离线安装 |
 | `--dry-run` | 只显示计划 |
 | `--check` | 检查安装前置依赖及 Neovim 版本，不等于完整 LSP 功能测试 |
 
 自动安装系统包支持 macOS/Homebrew、Debian/Ubuntu（含 WSL）。其他 Linux 需先准备依赖。配置通过软链接部署，已有目标会备份；安装后保留整个源目录。脚本不自动修改 shell 启动文件。
 
-新机器先克隆本仓库，在仓库目录运行 `./install.sh --with-lsp`。将以下内容加入 shell 启动文件（zsh 为 `~/.zshrc`，bash 为 `~/.bashrc`），重新打开终端后用 `command -v nvim` 确认使用 `~/.local/bin/nvim`：
+新机器先克隆本仓库，在仓库目录运行 `./install.sh`；需要代码补全时使用例如 `./install.sh --lsp python,rust`。将以下内容加入 shell 启动文件（zsh 为 `~/.zshrc`，bash 为 `~/.bashrc`），重新打开终端后用 `command -v nvim` 确认使用 `~/.local/bin/nvim`：
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
 配置会优先加载锁定的 Treesitter 插件目录中的解析器，避免旧的 `site/parser` 文件覆盖新版本。安装结束时还会验证实际加载的解析器与查询规则是否匹配。
+
+### 按语言选择 LSP
+
+| 参数中的语言 | 安装并启用的服务器 | 额外运行依赖 |
+| --- | --- | --- |
+| `c`、`cpp`、`c++` | clangd，同时支持 C/C++ | clangd |
+| `python`、`py` | Pyright | Node.js >= 20、npm |
+| `lua` | LuaLS | 对应平台的 LuaLS 二进制 |
+| `rust`、`rs` | rust-analyzer | Rust 工具链、Cargo、rust-src |
+| `typescript`、`ts`、`javascript`、`js` | typescript-language-server，同时支持 JS/TS、JSX/TSX | Node.js >= 20、npm、TypeScript |
+| `all` | 上述全部服务器 | 上述全部依赖 |
+| `none`（默认） | 不安装/启用 LSP 或 Blink | 无 LSP 专用依赖 |
+
+例如 `./install.sh --lsp cpp --lsp python` 等同 `./install.sh --lsp c,python`。只有 Python/JS/TS 需要 Node.js/npm；只选 Lua 或 Rust 不会要求它们或 clangd。
+
+每次安装用本次参数**替换**本机启用列表；例如从 Python 切换到 Python+Rust，需传 `--lsp python,rust`。不带 `--lsp` 重新安装会关闭 LSP 和 Blink，但不删除已下载的插件、服务器或工具链。语法高亮解析器独立安装，不受 LSP 选择影响。
+
+选择保存在 `${XDG_DATA_HOME:-$HOME/.local/share}/nvim/lsp-languages`，安装验证通过后才更新，不写入 Git 仓库；新机器需重新选择。没有该文件时默认关闭，包括从旧版配置更新后首次使用；运行一次带语言参数的安装即可启用。`scripts/install-lsp.sh LANGS` 只补齐服务器，不改变启用列表或安装 Blink，完整设置请用 `install.sh --lsp LANGS`。
 
 ### 外部依赖
 
@@ -97,6 +122,7 @@ source "$HOME/.cargo/env"
 | [lua/config/bootstrap.lua](lua/config/bootstrap.lua) | 引导安装 lazy.nvim |
 | [lua/config/project.lua](lua/config/project.lua) | 搜索、终端、状态栏共享的项目目录逻辑 |
 | [lua/config/lsp.lua](lua/config/lsp.lua) | 语言服务器启动与 LSP 快捷键 |
+| [lua/config/lsp_selection.lua](lua/config/lsp_selection.lua) | 读取本机语言选择，控制 LSP 与 Blink 启用 |
 | [lua/config/rust_standalone.lua](lua/config/rust_standalone.lua) | 独立 Rust 文件的轻量加载与服务复用 |
 | [lua/config/parsers.lua](lua/config/parsers.lua) | 编辑器与安装脚本共用的语法解析器列表 |
 | [lazy-lock.json](lazy-lock.json) | 插件提交锁定；存在条目不代表插件已启用 |
@@ -123,7 +149,7 @@ source "$HOME/.cargo/env"
 | flash.nvim | 屏幕内标签跳转 | [flash.lua](lua/plugins/flash.lua) |
 | persistence.nvim | 保存、选择、恢复编辑会话 | [persistence.lua](lua/plugins/persistence.lua) |
 | render-markdown.nvim | Markdown 编辑区渲染；Lazy 中保留名称 `markdown.nvim` | [render-markdown.lua](lua/plugins/render-markdown.lua) |
-| blink.cmp | 仅 LSP 补全，Lua 匹配器，圆角菜单 | [blink.lua](lua/plugins/blink.lua) |
+| blink.cmp（选定 LSP 语言时启用） | 仅 LSP 补全，Lua 匹配器，圆角菜单 | [blink.lua](lua/plugins/blink.lua) |
 | snacks.nvim | 缩进线、当前代码块提示、底部终端；调用 bufdelete 保留布局 | [snacks.lua](lua/plugins/snacks.lua)、[bufferline.lua](lua/plugins/bufferline.lua) |
 
 `lsp_bak.lua` 和 `dashboard.lua` 返回空表，不启用其中的旧配置。当前没有启用 Ranger、格式化插件、Trouble、which-key、AI 补全或额外代码片段来源。
@@ -211,7 +237,7 @@ source "$HOME/.cargo/env"
 | `空格 r n` | 重命名符号 |
 | `空格 c a` | 代码操作 |
 
-插入模式的 **blink 补全菜单**：
+启用 LSP 后，插入模式的 **blink 补全菜单**：
 
 | 按键 | 功能 |
 | --- | --- |
@@ -286,7 +312,7 @@ LSP 的根目录按语言单独识别，不强制使用上述 Git 优先规则�
 
 ## LSP 与补全
 
-原生 `vim.lsp.start` 启动语言服务，没有启用 nvim-lspconfig、Mason 或旧的 nvim-cmp 栈。
+默认关闭。安装时指定 `--lsp` 后，仅为选中的语言通过原生 `vim.lsp.start` 启动服务，同时启用 Blink 补全；无需额外安装 nvim-lspconfig、Mason 或旧的 nvim-cmp 栈。
 
 | 语言 | 服务 | 主要配置 |
 | --- | --- | --- |
@@ -352,3 +378,13 @@ LSP 的根目录按语言单独识别，不强制使用上述 Git 优先规则�
 6. 临时测试代码、测试项目和日志在检查结束后清理。
 
 快捷键表覆盖本配置的自定义操作及常用插件默认键位；完整原生键位查询 `:help`，完整插件默认键位查询对应插件帮助。
+
+### 安装参数回归测试
+
+无需联网或安装语言服务器，使用 Python 3 与 Neovim 执行：
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+覆盖默认关闭、参数别名与非法参数、按语言安装依赖、本机选择读取，以及仅启动所选语言服务器。

@@ -15,7 +15,10 @@ CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}"
 BIN_DIR="$HOME/.local/bin"
 TARGET="$CONFIG_ROOT/nvim"
 SKIP_SYSTEM=0
-WITH_LSP=0
+LSP_REQUEST=""
+LSP_LANGUAGES=""
+# shellcheck source=scripts/lsp-options.sh
+source "$SOURCE_DIR/scripts/lsp-options.sh"
 MODE=install
 WORK_DIR=""
 
@@ -29,7 +32,10 @@ usage() {
                   binary：只使用官方二进制；source：从指定版本源码构建
                   system：使用 PATH 中已有的 Neovim（包括自己编译的版本）
   --jobs N        源码构建并发数，默认 2，适合内存有限的机器
-  --with-lsp      安装 C/C++、Python、Lua、Rust、TypeScript 语言服务器（复用已有命令）
+  --lsp LANGS     安装并启用指定语言的 LSP 和 Blink 补全（逗号分隔，可重复）
+                  支持 c/cpp、python、lua、rust、typescript/javascript、all、none
+                  默认 none：不安装/启用 LSP 与补全插件，不安装语言服务器
+  --with-lsp      等同 --lsp all，安装全部支持的语言服务器
   --skip-system   跳过 apt/Homebrew；仍检查所需依赖
   --check         只检查所选安装方式的依赖及 Neovim 版本
   --dry-run       只显示安装计划，不下载、不修改文件
@@ -39,13 +45,15 @@ usage() {
   ./install.sh --version 0.11.5 --method source --jobs 2
   ./install.sh --version 0.11.4 --method binary
   ./install.sh --method system --skip-system
+  ./install.sh --lsp python,rust
 
 自动装包支持 macOS、Debian/Ubuntu（含 WSL）。其他 Linux 可备好依赖后 --skip-system。
 二进制支持 x86_64/arm64；其他架构可尝试 source，具体以该版本上游支持为准。
 当前配置要求 >= 0.10.0，完整验证基线为 0.11.5；其他版本仍需通过插件启动检查。
 版本选择只接受明确的 X.Y.Z 发布版本，不接受 latest/nightly 或任意 Git 分支。
 源码构建仍需网络下载源码和第三方依赖；产物装在用户目录，不需要 sudo make install。
-使用 XDG 目录和 ~/.local/bin；--with-lsp 安装语言服务器，不自动修改 shell 配置或安装字体。
+使用 XDG 目录和 ~/.local/bin；--lsp 按语言安装，不自动修改 shell 配置或安装字体。
+每次安装用本次选择替换本机 LSP 配置；默认关闭，保留已下载的插件和服务器文件。
 配置通过软链接部署，安装后请保留脚本所在的整个目录。
 HELP
 }
@@ -66,7 +74,14 @@ while [[ $# -gt 0 ]]; do
                 --jobs) BUILD_JOBS="$2" ;;
             esac
             shift 2 ;;
-        --with-lsp) WITH_LSP=1; shift ;;
+        --lsp)
+            [[ $# -ge 2 && -n "$2" ]] || die '--lsp 缺少语言列表'
+            LSP_REQUEST="${LSP_REQUEST:+$LSP_REQUEST,}$2"; shift 2 ;;
+        --lsp=*)
+            value="${1#--lsp=}"
+            [[ -n "$value" ]] || die '--lsp 缺少语言列表'
+            LSP_REQUEST="${LSP_REQUEST:+$LSP_REQUEST,}$value"; shift ;;
+        --with-lsp) LSP_REQUEST="${LSP_REQUEST:+$LSP_REQUEST,}all"; shift ;;
         --skip-system) SKIP_SYSTEM=1; shift ;;
         --check) MODE=check; shift ;;
         --dry-run) MODE=plan; shift ;;
@@ -74,6 +89,9 @@ while [[ $# -gt 0 ]]; do
         *) die "未知参数：$1" ;;
     esac
 done
+LSP_LANGUAGES="$(normalize_lsp_languages "$LSP_REQUEST")" || exit 1
+# Use the pending selection during installation without replacing the saved choice on failure.
+export NVIM_LSP_LANGUAGES="${LSP_LANGUAGES:-none}"
 NVIM_VERSION="${NVIM_VERSION#v}"
 [[ "$NVIM_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die '版本必须是 X.Y.Z，例如 0.11.5'
 [[ "$BUILD_JOBS" =~ ^[1-9][0-9]*$ ]] || die '--jobs 必须是正整数'
@@ -166,16 +184,16 @@ check_dependencies() {
         if [[ -n "${WAYLAND_DISPLAY:-}" ]] && ! have wl-copy; then log '缺少 Wayland 剪贴板：wl-clipboard'; missing=1; fi
         if [[ -n "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]] && ! have xclip && ! have xsel; then log '缺少 X11 剪贴板：xclip'; missing=1; fi
     fi
-    if [[ "$WITH_LSP" == 1 ]]; then
+    if lsp_has c; then
         have clangd || { log '缺少：clangd'; missing=1; }
-        if ! have node || ! have npm; then
-            have node && have npm || { log '缺少：Node.js >= 20/npm（Pyright/TypeScript）'; missing=1; }
-        fi
+    fi
+    if lsp_needs_node; then
+        have node && have npm || { log '缺少：Node.js >= 20/npm（Pyright/TypeScript）'; missing=1; }
         if have node; then
             node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' || { log '需要升级 Node.js 至 >= 20'; missing=1; }
         fi
-        log 'LSP：复用已有服务器；缺失时安装 LuaLS、Pyright、TypeScript、rustup/Rust 工具链及 rust-analyzer/rust-src' 
     fi
+    log "LSP 语言：${LSP_LANGUAGES:-none}；服务器按需安装，复用已有命令"
     return "$missing"
 }
 
@@ -188,7 +206,15 @@ if [[ "$MODE" == plan ]]; then
     log '依赖：Git、curl、tar/gzip、C 编译器、make、ripgrep、fd；Linux 剪贴板工具'
     [[ "$INSTALL_METHOD" != auto && "$INSTALL_METHOD" != source ]] || log '源码构建额外依赖：C++ 编译器、CMake、unzip、gettext；自动下载并编译上游依赖'
     [[ "$INSTALL_METHOD" != auto && "$INSTALL_METHOD" != binary ]] || log '二进制校验额外依赖：jq'
-    [[ "$WITH_LSP" != 1 ]] || log 'LSP：clangd、Node.js >= 20/npm、Pyright、LuaLS、TypeScript；rustup/Rust 工具链、rust-analyzer、rust-src'
+    log "LSP 语言：${LSP_LANGUAGES:-none}"
+    if [[ -n "$LSP_LANGUAGES" ]]; then log '启用内置 LSP 配置与 Blink 补全';
+    else log '基础安装：不安装/启用 LSP 与 Blink 补全'; fi
+    if lsp_has c; then log 'C/C++：clangd'; fi
+    if lsp_needs_node; then log 'Python/JS/TS 运行依赖：Node.js >= 20/npm'; fi
+    if lsp_has python; then log 'Python：Pyright'; fi
+    if lsp_has lua; then log 'Lua：LuaLS'; fi
+    if lsp_has rust; then log 'Rust：rustup/Rust 工具链、rust-analyzer、rust-src'; fi
+    if lsp_has typescript; then log 'JS/TS：typescript-language-server、TypeScript'; fi
     log '插件按 lazy-lock.json 恢复；解析器按 lua/config/parsers.lua 同步安装并验证'
     exit 0
 fi
@@ -228,10 +254,10 @@ if [[ "$SKIP_SYSTEM" == 0 ]]; then
         have brew || die "Homebrew 安装后仍不可用"
         packages=()
         requested=(git curl ripgrep fd)
-        if [[ "$WITH_LSP" == 1 ]]; then
+        if lsp_needs_node; then
             if ! have node || ! have npm; then requested+=(node); fi
-            have clangd || requested+=(llvm)
         fi
+        if lsp_has c; then have clangd || requested+=(llvm); fi
         if [[ "$INSTALL_METHOD" == auto || "$INSTALL_METHOD" == binary ]]; then requested+=(jq); fi
         if [[ "$INSTALL_METHOD" == auto || "$INSTALL_METHOD" == source ]]; then requested+=(cmake gettext unzip); fi
         for package in "${requested[@]}"; do
@@ -246,8 +272,8 @@ if [[ "$SKIP_SYSTEM" == 0 ]]; then
         requested=(ca-certificates git curl tar gzip coreutils build-essential ripgrep fd-find xclip wl-clipboard)
         if [[ "$INSTALL_METHOD" == auto || "$INSTALL_METHOD" == binary ]]; then requested+=(jq); fi
         if [[ "$INSTALL_METHOD" == auto || "$INSTALL_METHOD" == source ]]; then requested+=(cmake gettext unzip); fi
-        if [[ "$WITH_LSP" == 1 ]]; then
-            have clangd || requested+=(clangd)
+        if lsp_has c; then have clangd || requested+=(clangd); fi
+        if lsp_needs_node; then
             if ! have node || ! have npm; then requested+=(nodejs npm); fi
         fi
         "${elevate[@]}" apt-get install -y --no-install-recommends "${requested[@]}"
@@ -259,12 +285,12 @@ if [[ "$OS" == Darwin ]] && have brew; then
     if [[ -n "$gettext_prefix" ]]; then export PATH="$gettext_prefix/bin:$PATH"; fi
 fi
 
-if [[ "$WITH_LSP" == 1 && "$OS" == Darwin ]] && ! have clangd && have brew; then
+if lsp_has c && [[ "$OS" == Darwin ]] && ! have clangd && have brew; then
     llvm_prefix="$(brew --prefix llvm 2>/dev/null || true)"
     [[ -z "$llvm_prefix" ]] || export PATH="$llvm_prefix/bin:$PATH"
 fi
 check_dependencies || die "依赖检查未通过"
-if [[ "$WITH_LSP" == 1 ]]; then bash "$SOURCE_DIR/scripts/install-lsp.sh"; fi
+if [[ -n "$LSP_LANGUAGES" ]]; then bash "$SOURCE_DIR/scripts/install-lsp.sh" "$LSP_LANGUAGES"; fi
 
 fetch() {
     curl --fail --silent --show-error --location --retry 3 --connect-timeout 20 --max-time 600 "$1" -o "$2"
@@ -395,6 +421,12 @@ log '同步安装并验证解析器'
 log '验证完整配置启动'
 NVIM_INSTALL_STAGE=verify "$NVIM_BIN" --headless -i NONE -n -u "$TARGET/init.lua" \
     "+lua dofile(vim.fn.stdpath('config') .. '/scripts/install.lua')" +qa
+# Publish the machine-local selection only after plugins, parsers and startup pass.
+mkdir -p "$DATA_ROOT/nvim"
+selection_file="$(mktemp "$DATA_ROOT/nvim/.lsp-languages.XXXXXXXX")"
+printf '%s\n' "$LSP_LANGUAGES" > "$selection_file"
+mv "$selection_file" "$DATA_ROOT/nvim/lsp-languages"
+log "本机 LSP 配置已保存：${LSP_LANGUAGES:-none}"
 log '安装完成。请在 shell 启动文件中确保 ~/.local/bin 位于 PATH 前部：'
 printf '  export PATH="$HOME/.local/bin:$PATH"\n'
-log '图标需要终端使用 Nerd Font；SSH 无图形环境的剪贴板需终端支持。使用 --with-lsp 可安装 C/C++、Python、Lua、Rust、TypeScript 语言服务器。'
+log '图标需要终端使用 Nerd Font；SSH 无图形环境的剪贴板需终端支持。使用 --lsp python,rust 等选择语言，--with-lsp 安装全部支持的语言服务器。'

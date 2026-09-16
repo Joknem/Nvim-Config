@@ -29,4 +29,7 @@
 Thumbs.db
 Desktop.ini
 
+# Python test runner cache.
+__pycache__/
+
 # Keep init.lua, lua/, scripts/, install.sh, README.md and lazy-lock.json tracked.

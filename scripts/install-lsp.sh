@@ -2,26 +2,35 @@
 set -Eeuo pipefail
 ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/nvim-tools/lsp"
 have() { command -v "$1" >/dev/null 2>&1; }
-have clangd || { echo '缺少 clangd，请通过系统包管理器安装 clangd（macOS 可安装 Xcode Command Line Tools）。' >&2; exit 1; }
-# A compatible, pinned TypeScript server avoids changing Node requirements on every install.
-have node && have npm || { echo 'Pyright/TypeScript LSP 需要 Node.js >= 20 和 npm。' >&2; exit 1; }
-node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' || {
-    echo '需要 Node.js >= 20，请先更新 Node.js 再运行安装。' >&2; exit 1;
-}
-mkdir -p "$ROOT"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+source "$SCRIPT_DIR/lsp-options.sh"
+[[ $# == 1 && -n "$1" ]] || { echo '用法：install-lsp.sh python,rust（或 all）；此脚本只安装服务器，启用配置请使用 install.sh --lsp。' >&2; exit 1; }
+LSP_LANGUAGES="$(normalize_lsp_languages "$1")" || exit 1
+if lsp_has c; then
+    have clangd || { echo '缺少 clangd，请通过系统包管理器安装 clangd（macOS 可安装 Xcode Command Line Tools）。' >&2; exit 1; }
+fi
+if lsp_needs_node; then
+    # A compatible, pinned TypeScript server avoids changing Node requirements on every install.
+    have node && have npm || { echo 'Pyright/TypeScript LSP 需要 Node.js >= 20 和 npm。' >&2; exit 1; }
+    node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' || {
+        echo '需要 Node.js >= 20，请先更新 Node.js 再运行安装。' >&2; exit 1;
+    }
+fi
 packages=()
-if ! have pyright-langserver && [[ ! -x "$ROOT/node_modules/.bin/pyright-langserver" ]]; then
+if lsp_has python && ! have pyright-langserver && [[ ! -x "$ROOT/node_modules/.bin/pyright-langserver" ]]; then
     packages+=(pyright@1.1.408)
 fi
-if ! have typescript-language-server || ! have tsserver; then
+if lsp_has typescript && { ! have typescript-language-server || ! have tsserver; }; then
     if [[ ! -x "$ROOT/node_modules/.bin/typescript-language-server" || ! -x "$ROOT/node_modules/.bin/tsserver" ]]; then
         packages+=(typescript-language-server@5.1.3 typescript@5.9.3)
     fi
 fi
 if [[ ${#packages[@]} -gt 0 ]]; then
+    mkdir -p "$ROOT"
     npm install --prefix "$ROOT" --no-audit --no-fund "${packages[@]}"
 fi
-bash "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/install-rust-lsp.sh"
+if lsp_has rust; then bash "$SCRIPT_DIR/install-rust-lsp.sh"; fi
+if ! lsp_has lua; then exit 0; fi
 if have lua-language-server || [[ -x "$ROOT/lua-language-server/bin/lua-language-server" ]]; then
     echo '[nvim] 复用已有 Lua 语言服务器'
     exit 0

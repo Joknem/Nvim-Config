@@ -1,5 +1,6 @@
 return {
     'saghen/blink.cmp',
+    enabled = require('config.lsp_selection').enabled,
     tag = 'v1.10.2',
     lazy = false,
     opts = {

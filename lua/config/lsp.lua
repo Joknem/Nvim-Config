@@ -2,6 +2,8 @@ local M = {}
 
 -- Native vim.lsp.start works on both Neovim 0.10 and 0.11.
 function M.setup()
+    local selection = require('config.lsp_selection')
+    if not selection.enabled then return end
     local tool_root = vim.fn.stdpath('data'):gsub('/nvim$', '') .. '/nvim-tools/lsp'
     local cargo_bin = (vim.env.CARGO_HOME or (vim.env.HOME .. '/.cargo')) .. '/bin'
     if vim.fn.isdirectory(cargo_bin) == 1 then
@@ -59,7 +61,7 @@ function M.setup()
             local filename = vim.api.nvim_buf_get_name(event.buf)
             if filename == '' then return end
             for name, server in pairs(servers) do
-                if vim.tbl_contains(server.filetypes, vim.bo[event.buf].filetype) then
+                if selection.servers[name] and vim.tbl_contains(server.filetypes, vim.bo[event.buf].filetype) then
                     local cmd = vim.deepcopy(server.cmd)
                     if name == 'ts_ls' and vim.fn.executable('tsserver') ~= 1
                         and vim.fn.executable(server.fallback) == 1 then
@@ -71,7 +73,8 @@ function M.setup()
                         else
                             if not warned[name] then
                                 warned[name] = true
-                                vim.notify('缺少 ' .. cmd[1] .. '，请运行 install.sh --with-lsp 安装语言服务器', vim.log.levels.WARN)
+                                vim.notify('缺少 ' .. cmd[1] .. '，请运行 install.sh --lsp '
+                                    .. table.concat(selection.languages, ',') .. ' 安装语言服务器', vim.log.levels.WARN)
                             end
                             return
                         end

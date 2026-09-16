@@ -24,6 +24,8 @@ local function main()
         assert(not messages:match("E%d+:") and not messages:match("Failed to")
             and not messages:match("Error detected"), messages)
         assert(package.loaded["lazy"] and package.loaded["nvim-treesitter.configs"], "核心配置未成功加载")
+        local lsp_enabled = require("config.lsp_selection").enabled
+        assert((package.loaded["blink.cmp"] ~= nil) == lsp_enabled, "补全插件状态与 LSP 选择不一致")
         -- Check normal runtime resolution too: old site/parser copies can shadow new parsers.
         for _, language in ipairs(require("config.parsers")) do
             vim.treesitter.get_string_parser("", language):parse()
