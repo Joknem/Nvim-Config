@@ -4,7 +4,7 @@ set -Eeuo pipefail
 
 VERSION_EXPLICIT=0
 [[ -z "${NVIM_VERSION:-}" ]] || VERSION_EXPLICIT=1
-NVIM_VERSION="${NVIM_VERSION:-0.11.5}"
+NVIM_VERSION="${NVIM_VERSION:-0.12.5}"
 INSTALL_METHOD=auto
 BUILD_JOBS=2
 SOURCE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -26,7 +26,7 @@ usage() {
     cat <<'HELP'
 用法：./install.sh [选项]
 
-  --version X.Y.Z  选择 Neovim 发布版本（默认 0.11.5，也可传 v0.11.5）
+  --version X.Y.Z  选择 Neovim 发布版本（默认 0.12.5，也可传 v0.12.5）
   --method METHOD 安装方式：auto（默认）、binary、source、system
                   auto：复用同版本，否则尝试二进制；不可用时从源码编译
                   binary：只使用官方二进制；source：从指定版本源码构建
@@ -42,14 +42,14 @@ usage() {
   -h, --help      显示帮助
 
 示例：
-  ./install.sh --version 0.11.5 --method source --jobs 2
+  ./install.sh --version 0.12.5 --method source --jobs 2
   ./install.sh --version 0.11.4 --method binary
   ./install.sh --method system --skip-system
   ./install.sh --lsp python,rust
 
 自动装包支持 macOS、Debian/Ubuntu（含 WSL）。其他 Linux 可备好依赖后 --skip-system。
 二进制支持 x86_64/arm64；其他架构可尝试 source，具体以该版本上游支持为准。
-当前配置要求 >= 0.10.0，完整验证基线为 0.11.5；其他版本仍需通过插件启动检查。
+当前配置要求 >= 0.10.0，完整验证基线为 0.12.5；其他版本仍需通过插件启动检查。
 版本选择只接受明确的 X.Y.Z 发布版本，不接受 latest/nightly 或任意 Git 分支。
 源码构建仍需网络下载源码和第三方依赖；产物装在用户目录，不需要 sudo make install。
 使用 XDG 目录和 ~/.local/bin；--lsp 按语言安装，不自动修改 shell 配置或安装字体。
@@ -93,7 +93,7 @@ LSP_LANGUAGES="$(normalize_lsp_languages "$LSP_REQUEST")" || exit 1
 # Use the pending selection during installation without replacing the saved choice on failure.
 export NVIM_LSP_LANGUAGES="${LSP_LANGUAGES:-none}"
 NVIM_VERSION="${NVIM_VERSION#v}"
-[[ "$NVIM_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die '版本必须是 X.Y.Z，例如 0.11.5'
+[[ "$NVIM_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die '版本必须是 X.Y.Z，例如 0.12.5'
 [[ "$BUILD_JOBS" =~ ^[1-9][0-9]*$ ]] || die '--jobs 必须是正整数'
 case "$INSTALL_METHOD" in auto|binary|source|system) ;; *) die '--method 必须为 auto/binary/source/system' ;; esac
 version_of() {
@@ -101,12 +101,15 @@ version_of() {
     output="$("$1" --version 2>/dev/null)" || return 1
     printf '%s\n' "$output" | sed -n '1s/^NVIM v\([0-9]*\.[0-9]*\.[0-9]*\)$/\1/p'
 }
+check_runtime() {
+    "$1" --headless -u NONE -i NONE -n -l "$SOURCE_DIR/scripts/check-runtime.lua"
+}
 check_compatibility() {
     local major minor rest
     major="${NVIM_VERSION%%.*}"; rest="${NVIM_VERSION#*.}"; minor="${rest%%.*}"
     [[ "$major" -gt 0 || "$minor" -ge 10 ]] || die '当前配置使用的 API 要求 Neovim >= 0.10.0；更旧版本需要先调整配置和插件锁文件'
-    if [[ "$NVIM_VERSION" != 0.11.5 ]]; then
-        log "选择版本 ${NVIM_VERSION}；完整验证基线为 0.11.5，安装结束会检查配置兼容性"
+    if [[ "$NVIM_VERSION" != 0.12.5 ]]; then
+        log "选择版本 ${NVIM_VERSION}；完整验证基线为 0.12.5，安装结束会检查配置兼容性"
     fi
 }
 
@@ -224,7 +227,8 @@ if [[ "$MODE" == check ]]; then
     check_nvim="$(command -v nvim || true)"
     [[ "$INSTALL_METHOD" != system ]] || check_nvim="$SYSTEM_NVIM"
     if [[ -n "$check_nvim" && "$(version_of "$check_nvim")" == "$NVIM_VERSION" ]]; then
-        log "Neovim $NVIM_VERSION: OK"
+        check_runtime "$check_nvim" || result=1
+        log "Neovim $NVIM_VERSION: 版本号匹配"
     else
         log "需要 Neovim ${NVIM_VERSION}（普通安装会自动准备）"; result=1
     fi
@@ -361,14 +365,14 @@ build_source() {
 NVIM_BIN=""
 if [[ "$INSTALL_METHOD" == system ]]; then
     NVIM_BIN="$SYSTEM_NVIM"
-elif [[ "$INSTALL_METHOD" == auto ]] && have nvim && [[ "$(version_of "$(command -v nvim)")" == "$NVIM_VERSION" ]]; then
+elif [[ "$INSTALL_METHOD" == auto ]] && have nvim && [[ "$(version_of "$(command -v nvim)")" == "$NVIM_VERSION" ]] && check_runtime "$(command -v nvim)"; then
     NVIM_BIN="$(command -v nvim)"
 else
     methods="$INSTALL_METHOD"
     [[ "$INSTALL_METHOD" != auto ]] || methods='binary source'
     for method in $methods; do
         candidate="$DATA_ROOT/nvim-tools/nvim-$NVIM_VERSION-$PLATFORM-$ARCH-$method/bin/nvim"
-        if [[ -x "$candidate" && "$(version_of "$candidate")" == "$NVIM_VERSION" ]]; then NVIM_BIN="$candidate"; break; fi
+        if [[ -x "$candidate" && "$(version_of "$candidate")" == "$NVIM_VERSION" ]] && check_runtime "$candidate"; then NVIM_BIN="$candidate"; break; fi
     done
     if [[ -z "$NVIM_BIN" ]]; then
         case "$INSTALL_METHOD" in
@@ -383,6 +387,8 @@ else
         esac
     fi
 fi
+
+check_runtime "$NVIM_BIN" || die "Neovim runtime 不完整或与二进制不匹配，请整套重新安装"
 
 mkdir -p "$BIN_DIR"
 if [[ ! "$NVIM_BIN" -ef "$BIN_DIR/nvim" ]]; then

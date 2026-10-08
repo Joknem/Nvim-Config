@@ -2,7 +2,7 @@
 
 这份文档是本目录配置的使用手册。修改插件、快捷键、依赖或默认行为时，同步更新对应章节；实际启用内容以 `init.lua` 和 `lua/` 下的配置为准。
 
-当前验证基线：Neovim **0.11.5**。安装脚本允许选择 **0.10.0 及以上**正式版本；其他版本需通过安装结束时的启动检查。
+当前验证基线：Neovim **0.12.5**。安装脚本允许选择 **0.10.0 及以上**正式版本；其他版本需通过安装结束时的启动检查。
 
 ## 目录
 
@@ -29,7 +29,7 @@
 ./install.sh --with-lsp
 
 # 自选版本并从源码编译
-./install.sh --version 0.11.5 --method source --jobs 2 --with-lsp
+./install.sh --version 0.12.5 --method source --jobs 2 --with-lsp
 
 # 复用 PATH 中已有的 Neovim
 ./install.sh --method system --with-lsp
@@ -44,7 +44,7 @@ bash scripts/install-lsp.sh python,rust
 
 | 选项 | 含义 |
 | --- | --- |
-| `--version X.Y.Z` | 指定正式发布版本，默认 0.11.5；也接受 `v` 前缀 |
+| `--version X.Y.Z` | 指定正式发布版本，默认 0.12.5；也接受 `v` 前缀 |
 | `--method auto` | 默认：复用同版本，否则尝试官方二进制，不可用时编译源码 |
 | `--method binary` | 只使用可校验、可运行的官方二进制 |
 | `--method source` | 从所选版本源码构建 |
@@ -64,7 +64,9 @@ bash scripts/install-lsp.sh python,rust
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-配置会优先加载锁定的 Treesitter 插件目录中的解析器，避免旧的 `site/parser` 文件覆盖新版本。安装结束时还会验证实际加载的解析器与查询规则是否匹配。
+安装前会检查 Neovim 的核心 runtime 模块；`auto` 不复用检查失败的安装，`system` 则报错要求整套重装。插件按 `lazy-lock.json` 显式切换提交，有本地修改时停止。
+
+配置会优先加载锁定的 Treesitter 插件目录中的解析器，避免旧的 `site/parser` 文件覆盖新版本。安装会同步配置列表及 runtimepath 上已有解析器，包含 regex 等嵌入语言；安装结束时验证实际加载的解析器与查询规则是否匹配。无法同步的额外解析器会使安装失败，不会静默跳过。
 
 ### 按语言选择 LSP
 

@@ -9,6 +9,18 @@ local function git(...)
     assert(result.code == 0, result.stderr or result.stdout)
     return vim.trim(result.stdout)
 end
+local function parser_languages()
+    local languages = vim.deepcopy(require("config.parsers"))
+    -- Include leftovers from previous installations and injected languages.
+    for _, path in ipairs(vim.api.nvim_get_runtime_file("parser/*", true)) do
+        local language = vim.fn.fnamemodify(path, ":t:r")
+        if not vim.tbl_contains(languages, language) then
+            languages[#languages + 1] = language
+        end
+    end
+    return languages
+end
+
 local function main()
     local root = vim.fn.stdpath("config")
     vim.opt.rtp:prepend(root)
@@ -27,7 +39,7 @@ local function main()
         local lsp_enabled = require("config.lsp_selection").enabled
         assert((package.loaded["blink.cmp"] ~= nil) == lsp_enabled, "补全插件状态与 LSP 选择不一致")
         -- Check normal runtime resolution too: old site/parser copies can shadow new parsers.
-        for _, language in ipairs(require("config.parsers")) do
+        for _, language in ipairs(parser_languages()) do
             vim.treesitter.get_string_parser("", language):parse()
             for _, query in ipairs({ "highlights", "injections", "locals", "indents", "folds" }) do
                 vim.treesitter.query.get(language, query)
@@ -94,12 +106,23 @@ local function main()
                 end
             end
         end
+        local function restore_plugin_revisions()
+            -- Enforce the lock explicitly so installs are reproducible even
+            -- when an older machine already has newer plugin directories.
+            for name, plugin in pairs(config.plugins) do
+                local expected_commit = expected[name].commit
+                local actual_commit = git("-C", plugin.dir, "rev-parse", "HEAD")
+                if actual_commit ~= expected_commit then
+                    assert(git("-C", plugin.dir, "status", "--porcelain") == "",
+                        name .. " 有本地改动，无法恢复锁定版本")
+                    git("-C", plugin.dir, "fetch", "origin", expected_commit)
+                    git("-C", plugin.dir, "checkout", "--detach", expected_commit)
+                end
+            end
+        end
         require("lazy").install({ wait = true, show = false, lockfile = true })
         check_tasks()
-        -- Lazy install writes its lockfile; restore must use the original committed revisions.
-        reset_lock()
-        require("lazy").restore({ wait = true, show = false })
-        check_tasks()
+        restore_plugin_revisions()
         for name, plugin in pairs(config.plugins) do
             assert(git("-C", plugin.dir, "rev-parse", "HEAD") == expected[name].commit,
                 "插件版本校验失败：" .. name)
@@ -112,7 +135,7 @@ local function main()
         vim.opt.rtp:prepend(path)
         local configs = require("nvim-treesitter.configs")
         configs.setup({ ensure_installed = {}, auto_install = false })
-        local languages = require("config.parsers")
+        local languages = parser_languages()
         require("nvim-treesitter.install").update({ with_sync = true })(languages)
         local parser_lock = read_json(path .. "/lockfile.json")
         local parsers = require("nvim-treesitter.parsers").get_parser_configs()

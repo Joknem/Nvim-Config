@@ -1,6 +1,6 @@
 return {
     "nvim-treesitter/nvim-treesitter",
-    branch = "master", -- legacy configs API, paired with Neovim 0.11.5
+    branch = "master", -- legacy configs API, paired with the locked 0.12.5 baseline
     lazy = false,
     build = ":TSUpdate",
     config = function()

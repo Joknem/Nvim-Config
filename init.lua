@@ -30,24 +30,43 @@ if vim.g.vscode then
 
     local workbench = {
         showCommands = function()
-        vim.fn.VSCodeNotify("workbench.action.showCommands")
+            vim.fn.VSCodeNotify("workbench.action.showCommands")
         end,
         previousEditor = function()
-        vim.fn.VSCodeNotify("workbench.action.previousEditor")
+            vim.fn.VSCodeNotify("workbench.action.previousEditor")
         end,
-          nextEditor = function()
+        nextEditor = function()
             vim.fn.VSCodeNotify("workbench.action.nextEditor")
-          end,
+        end,
+        goForward = function()
+            vim.fn.VSCodeNotify("workbench.action.navigateForward")
+        end,
+        goBack = function()
+            vim.fn.VSCodeNotify("workbench.action.navigateBack")
+        end,
     }
 
     -- Normal mode
     vim.g.mapleader = " "
+    vim.opt.number=true
+    vim.opt.relativenumber=true
     keymaps.set({"n"}, "H", workbench.previousEditor)
     keymaps.set({"n"}, "L", workbench.nextEditor)
     keymaps.set({"n"}, "<leader>s", file.save)
+    keymaps.set({"n"}, "<leader>[", workbench.goBack)
+    keymaps.set({"n"}, "<leader>]", workbench.goForward)
+    vim.api.nvim_set_keymap('n', "<leader>-", "<C-w>s", { noremap = false})
+    vim.api.nvim_set_keymap('n', "<leader>\\", "<C-w>v", { noremap = false})
+    vim.api.nvim_set_keymap('n', '<leader>nh', ':nohlsearch<CR>', { noremap = false})
+    vim.api.nvim_set_keymap('n', '<leader>h', '<C-w>h', { noremap = false})
+    vim.api.nvim_set_keymap('n', '<leader>j', '<C-w>j', { noremap = false})
+    vim.api.nvim_set_keymap('n', '<leader>k', '<C-w>k', { noremap = false})
+    vim.api.nvim_set_keymap('n', '<leader>l', '<C-w>l', { noremap = false})
 
     -- Insert mode
     keymaps.set('i', "jk", "<Esc>")
+    require("config.yank").setup()
+
 else
     require("options")
     require("keymaps")

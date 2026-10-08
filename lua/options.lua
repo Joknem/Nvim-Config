@@ -1,5 +1,11 @@
 local option = vim.opt
-option.clipboard = "unnamedplus"
+-- Only use the system clipboard when a provider is installed.
+for _, provider in ipairs({ 'wl-copy', 'xclip', 'xsel', 'pbcopy', 'win32yank' }) do
+    if vim.fn.executable(provider) == 1 then
+        option.clipboard = "unnamedplus"
+        break
+    end
+end
 option.completeopt = {"menu", "menuone", "noselect"}
 option.mouse = 'a'
 
@@ -29,13 +35,4 @@ option.incsearch = true
 option.ignorecase=true
 option.smartcase = true
 
--- Highlight yanked text for 500ms
-vim.api.nvim_create_autocmd({"TextYankPost"},{
-    group = vim.api.nvim_create_augroup("UserYankHighlight", { clear = true }),
-    pattern = {"*"},
-    callback = function()
-        vim.highlight.on_yank({
-            timeout = 500,
-        })
-    end,
-})
+require("config.yank").setup()

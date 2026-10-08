@@ -68,6 +68,17 @@ class LspInstallTests(unittest.TestCase):
                 if language == 'typescript':
                     self.assertNotIn('pyright@', calls)
 
+    def test_runtime_integrity(self):
+        command = [shutil.which('nvim'), '--headless', '-u', 'NONE', '-i', 'NONE',
+                   '-n', '-l', str(ROOT / 'scripts/check-runtime.lua')]
+        result = subprocess.run(command, text=True, capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # Same binary/version, but an incomplete runtime must not be reused.
+        with tempfile.TemporaryDirectory() as runtime:
+            result = subprocess.run(command, env=dict(os.environ, VIMRUNTIME=runtime),
+                                    text=True, capture_output=True, timeout=20)
+            self.assertNotEqual(result.returncode, 0)
+
     def test_runtime_selection(self):
         result = subprocess.run([shutil.which('nvim'), '--headless', '-u', 'NONE', '-i', 'NONE',
                                  '-n', '-l', 'tests/lsp-selection.lua'], cwd=ROOT,
